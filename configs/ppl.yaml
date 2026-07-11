@@ -1,0 +1,24 @@
+campaign:
+  id: ppl-2026
+  name: Pro Padel League
+
+video:
+  minimum_duration_seconds: 10
+  target_width: 1080
+  target_height: 1920
+  preserve_original_audio: true
+  watermark_required: true
+
+content:
+  language: English
+  approved_source_only: true
+
+caption:
+  required_accounts:
+    - "@propadelleague"
+    - "@CNBC"
+
+publishing:
+  minimum_live_days: 30
+  paid_boosting_allowed: false
+  story_boosting_allowed: false
