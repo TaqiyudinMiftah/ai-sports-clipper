@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.env
+
+# Local media and generated artifacts
+data/input/*
+data/output/*
+data/reports/*
+!data/input/.gitkeep
+!data/output/.gitkeep
+!data/reports/.gitkeep
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wav
+
+# Local model weights
+models/
