@@ -1,5 +1,92 @@
 # AI Sports Clipper
 
-An MVP pipeline for finding, ranking, and exporting potentially interesting sports highlights from long-form match footage.
+A Python MVP that analyzes long-form sports footage, finds high-activity moments using audio and visual motion, ranks candidate highlights, and optionally exports preview clips with FFmpeg.
 
-Development is in progress on a feature branch.
+This first version intentionally focuses on **candidate discovery**, not autonomous social-media publishing. A human should review every exported clip before editing or posting.
+
+## Current capabilities
+
+- Inspect video metadata with `ffprobe`.
+- Extract and analyze mono audio for energy and transient peaks.
+- Sample video frames and estimate visual motion.
+- Merge audio and motion into a per-second excitement timeline.
+- Detect, pad, score, and rank candidate highlights.
+- Export the top candidates as MP4 files.
+- Save a JSON analysis report with timestamps, scores, and reasons.
+
+## Requirements
+
+- Python 3.10 or newer
+- FFmpeg and FFprobe available on `PATH`
+
+Check the media tools:
+
+```bash
+ffmpeg -version
+ffprobe -version
+```
+
+## Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install -e ".[dev]"
+```
+
+Place a local test video in `data/input/`. Video files are ignored by Git and must not be committed.
+
+## Inspect a video
+
+```bash
+sports-clipper inspect data/input/match.mp4
+```
+
+## Analyze and export candidates
+
+```bash
+sports-clipper analyze data/input/match.mp4 --top 5
+```
+
+Generate timestamps and a report without rendering clips:
+
+```bash
+sports-clipper analyze data/input/match.mp4 --top 5 --no-export
+```
+
+Useful tuning options:
+
+```bash
+sports-clipper analyze data/input/match.mp4 \
+  --threshold 0.68 \
+  --sample-fps 2 \
+  --top 10
+```
+
+Outputs are written to:
+
+```text
+data/output/   # exported MP4 candidates
+data/reports/  # JSON analysis reports
+```
+
+## How the MVP scores moments
+
+The detector normalizes audio and motion inside each video, then combines them with a default weight of 55% audio and 45% motion. High-scoring neighboring seconds are grouped into candidate ranges, padded to preserve rally context, and expanded to at least 10 seconds.
+
+This is a heuristic baseline. It does not yet understand the ball, score, player identity, or exact rally boundaries.
+
+## Development roadmap
+
+1. Collect human ratings for exported candidates.
+2. Detect broadcast replays and scoreboard changes.
+3. Add player pose and court-region analysis.
+4. Train a learned highlight-ranking model from reviewer feedback.
+5. Add vertical reframing, subtitles, watermarking, and campaign compliance.
+6. Add approval-based publishing integrations.
+
+## Run tests
+
+```bash
+pytest -q
+```
