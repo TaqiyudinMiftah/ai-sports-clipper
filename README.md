@@ -1,11 +1,14 @@
 # AI Sports Clipper
 
-A Python MVP that analyzes long-form sports footage, finds high-activity moments using audio and visual motion, ranks candidate highlights, and optionally exports preview clips with FFmpeg.
+A Python MVP that downloads approved source footage, analyzes long-form sports video, finds high-activity moments using audio and visual motion, ranks candidate highlights, and optionally exports preview clips with FFmpeg.
 
-This first version intentionally focuses on **candidate discovery**, not autonomous social-media publishing. A human should review every exported clip before editing or posting.
+This first version intentionally focuses on **source ingestion and candidate discovery**, not autonomous social-media publishing. A human should review every exported clip before editing or posting.
 
 ## Current capabilities
 
+- List and download approved videos from a public Google Drive folder.
+- Resume interrupted Google Drive downloads and skip completed files.
+- Create a source manifest with file paths, sizes, URLs, and SHA-256 hashes.
 - Inspect video metadata with `ffprobe`.
 - Extract and analyze mono audio for energy and transient peaks.
 - Sample video frames and estimate visual motion.
@@ -18,6 +21,7 @@ This first version intentionally focuses on **candidate discovery**, not autonom
 
 - Python 3.10 or newer
 - FFmpeg and FFprobe available on `PATH`
+- The Google Drive source folder must be accessible to the downloader
 
 Check the media tools:
 
@@ -30,34 +34,77 @@ ffprobe -version
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-Place a local test video in `data/input/`. Video files are ignored by Git and must not be committed.
+Video files are ignored by Git and must not be committed.
+
+## Download the PPL source footage
+
+The default source is the approved Pro Padel League campaign folder.
+List the matching videos before downloading:
+
+```bash
+sports-clipper download-drive --list-only
+```
+
+Download the videos into `data/input/ppl/`:
+
+```bash
+sports-clipper download-drive
+```
+
+The campaign folder currently contains approximately 1.63 GiB of video, so make sure enough disk space is available. Existing completed files are skipped and interrupted downloads use gdown's continue mode.
+
+Use a different public Drive folder or destination:
+
+```bash
+sports-clipper download-drive \
+  "https://drive.google.com/drive/folders/FOLDER_ID" \
+  --output data/input/another-campaign
+```
+
+Select extensions or force replacement:
+
+```bash
+sports-clipper download-drive \
+  --extensions .mp4 .mov \
+  --overwrite
+```
+
+Every run writes:
+
+```text
+data/input/ppl/source_manifest.json
+```
+
+The manifest records the Drive folder URL, original file URL and path, local path, size, download status, and SHA-256 hash. Use `--no-hash` when faster manifest generation is more important than provenance verification.
+
+If Google reports permission denied, verify that the folder and files are shared appropriately. Google may also temporarily throttle popular files; rerun the command to resume partial downloads.
 
 ## Inspect a video
 
 ```bash
-sports-clipper inspect data/input/match.mp4
+sports-clipper inspect "data/input/ppl/match.mov"
 ```
 
 ## Analyze and export candidates
 
 ```bash
-sports-clipper analyze data/input/match.mp4 --top 5
+sports-clipper analyze "data/input/ppl/match.mov" --top 5
 ```
 
 Generate timestamps and a report without rendering clips:
 
 ```bash
-sports-clipper analyze data/input/match.mp4 --top 5 --no-export
+sports-clipper analyze "data/input/ppl/match.mov" --top 5 --no-export
 ```
 
 Useful tuning options:
 
 ```bash
-sports-clipper analyze data/input/match.mp4 \
+sports-clipper analyze "data/input/ppl/match.mov" \
   --threshold 0.68 \
   --sample-fps 2 \
   --top 10
