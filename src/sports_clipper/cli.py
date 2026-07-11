@@ -8,6 +8,12 @@ from pathlib import Path
 from .audio_analysis import analyze_audio_windows, extract_mono_audio
 from .candidate_detection import build_timeline, detect_candidates
 from .clip_exporter import export_clip
+from .drive_download import (
+    DEFAULT_VIDEO_EXTENSIONS,
+    PPL_SOURCE_FOLDER_URL,
+    DriveDownloadError,
+    download_drive_folder,
+)
 from .motion_analysis import analyze_motion_windows
 from .scoring import rank_candidates
 from .video_info import MediaToolError, get_video_info
@@ -20,9 +26,45 @@ def _format_time(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+def _format_bytes(size: object) -> str:
+    if not isinstance(size, int):
+        return "unknown size"
+    value = float(size)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size} B"
+
+
 def inspect_command(video: Path) -> int:
     info = get_video_info(video)
     print(json.dumps(info.to_dict(), indent=2))
+    return 0
+
+
+def download_drive_command(
+    folder_url: str,
+    output_dir: Path,
+    extensions: list[str],
+    overwrite: bool,
+    compute_hashes: bool,
+    list_only: bool,
+) -> int:
+    manifest = download_drive_folder(
+        folder_url,
+        output_dir,
+        extensions=extensions,
+        overwrite=overwrite,
+        compute_hashes=compute_hashes,
+        list_only=list_only,
+    )
+    for record in manifest["files"]:
+        print(
+            f"[{record['status']}] {record['relative_path']} "
+            f"({_format_bytes(record.get('size_bytes'))})"
+        )
+    print(f"Source manifest saved to {manifest['manifest_path']}")
     return 0
 
 
@@ -92,6 +134,43 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sports-clipper")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    download_parser = subparsers.add_parser(
+        "download-drive",
+        help="Download approved video sources from a public Google Drive folder",
+    )
+    download_parser.add_argument(
+        "folder_url",
+        nargs="?",
+        default=PPL_SOURCE_FOLDER_URL,
+        help="Public Drive folder URL; defaults to the PPL campaign source folder",
+    )
+    download_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/input/ppl"),
+    )
+    download_parser.add_argument(
+        "--extensions",
+        nargs="+",
+        default=list(DEFAULT_VIDEO_EXTENSIONS),
+        help="Allowed video extensions",
+    )
+    download_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace completed files instead of skipping them",
+    )
+    download_parser.add_argument(
+        "--no-hash",
+        action="store_true",
+        help="Skip SHA-256 calculation for faster manifest generation",
+    )
+    download_parser.add_argument(
+        "--list-only",
+        action="store_true",
+        help="List matching files and write a manifest without downloading bytes",
+    )
+
     inspect_parser = subparsers.add_parser("inspect", help="Inspect video metadata")
     inspect_parser.add_argument("video", type=Path)
 
@@ -115,6 +194,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     try:
+        if args.command == "download-drive":
+            return download_drive_command(
+                folder_url=args.folder_url,
+                output_dir=args.output,
+                extensions=args.extensions,
+                overwrite=args.overwrite,
+                compute_hashes=not args.no_hash,
+                list_only=args.list_only,
+            )
         if args.command == "inspect":
             return inspect_command(args.video)
         return analyze_command(
@@ -126,7 +214,13 @@ def main() -> int:
             sample_fps=args.sample_fps,
             export=not args.no_export,
         )
-    except (FileNotFoundError, ValueError, RuntimeError, MediaToolError) as error:
+    except (
+        DriveDownloadError,
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+        MediaToolError,
+    ) as error:
         raise SystemExit(f"Error: {error}") from error
 
 
