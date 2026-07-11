@@ -6,6 +6,11 @@ import tempfile
 from pathlib import Path
 
 from .audio_analysis import analyze_audio_windows, extract_mono_audio
+from .ball_reframe import (
+    ReframeError,
+    parse_normalized_roi,
+    reframe_video,
+)
 from .candidate_detection import build_timeline, detect_candidates
 from .clip_exporter import export_clip
 from .drive_download import (
@@ -65,6 +70,33 @@ def download_drive_command(
             f"({_format_bytes(record.get('size_bytes'))})"
         )
     print(f"Source manifest saved to {manifest['manifest_path']}")
+    return 0
+
+
+def reframe_command(
+    video: Path,
+    output: Path | None,
+    zoom: float,
+    width: int,
+    height: int,
+    roi: tuple[float, float, float, float],
+    smoothing: float,
+    analysis_width: int,
+    debug_overlay: bool,
+) -> int:
+    destination = output or Path("data/output") / f"{video.stem}_ball_follow.mp4"
+    report = reframe_video(
+        video,
+        destination,
+        zoom=zoom,
+        output_width=width,
+        output_height=height,
+        roi=roi,
+        smoothing=smoothing,
+        analysis_width=analysis_width,
+        debug_overlay=debug_overlay,
+    )
+    print(json.dumps(report, indent=2))
     return 0
 
 
@@ -174,6 +206,43 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="Inspect video metadata")
     inspect_parser.add_argument("video", type=Path)
 
+    reframe_parser = subparsers.add_parser(
+        "reframe",
+        help="Create a smooth vertical crop that follows the likely rally ball",
+    )
+    reframe_parser.add_argument("video", type=Path)
+    reframe_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Output MP4; defaults to data/output/<name>_ball_follow.mp4",
+    )
+    reframe_parser.add_argument("--zoom", type=float, default=1.4)
+    reframe_parser.add_argument("--width", type=int, default=1080)
+    reframe_parser.add_argument("--height", type=int, default=1920)
+    reframe_parser.add_argument(
+        "--roi",
+        type=parse_normalized_roi,
+        default=parse_normalized_roi("0.02,0.14,0.98,0.76"),
+        help="Normalized court ROI: left,top,right,bottom",
+    )
+    reframe_parser.add_argument(
+        "--smoothing",
+        type=float,
+        default=0.16,
+        help="Camera response from 0 to 1; lower values move more smoothly",
+    )
+    reframe_parser.add_argument(
+        "--analysis-width",
+        type=int,
+        default=540,
+        help="Width used by the detector; lower values are faster",
+    )
+    reframe_parser.add_argument(
+        "--debug-overlay",
+        action="store_true",
+        help="Draw tracking mode and crop-center markers on the output",
+    )
+
     analyze_parser = subparsers.add_parser(
         "analyze", help="Find and optionally export highlight candidates"
     )
@@ -205,6 +274,18 @@ def main() -> int:
             )
         if args.command == "inspect":
             return inspect_command(args.video)
+        if args.command == "reframe":
+            return reframe_command(
+                video=args.video,
+                output=args.output,
+                zoom=args.zoom,
+                width=args.width,
+                height=args.height,
+                roi=args.roi,
+                smoothing=args.smoothing,
+                analysis_width=args.analysis_width,
+                debug_overlay=args.debug_overlay,
+            )
         return analyze_command(
             video=args.video,
             output_dir=args.output,
@@ -216,6 +297,7 @@ def main() -> int:
         )
     except (
         DriveDownloadError,
+        ReframeError,
         FileNotFoundError,
         ValueError,
         RuntimeError,
