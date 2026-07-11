@@ -2,6 +2,15 @@ campaign:
   id: ppl-2026
   name: Pro Padel League
 
+source:
+  folder_url: "https://drive.google.com/drive/folders/1YpCPlbqJ77WPkk-h9j2WZyG79qDpl2aY"
+  output_directory: data/input/ppl
+  allowed_extensions:
+    - .mp4
+    - .mov
+  manifest_file: source_manifest.json
+  hash_algorithm: sha256
+
 video:
   minimum_duration_seconds: 10
   target_width: 1080
