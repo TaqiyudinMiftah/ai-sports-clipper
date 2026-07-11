@@ -47,7 +47,7 @@ def test_bounded_center_keeps_crop_inside_frame() -> None:
 def test_ball_candidates_detect_moving_yellow_circle() -> None:
     previous = np.zeros((360, 640, 3), dtype=np.uint8)
     current = previous.copy()
-    cv2.circle(current, (320, 180), 5, (0, 255, 255), -1)
+    cv2.circle(current, (320, 180), 4, (0, 255, 255), -1)
     previous_gray = cv2.cvtColor(previous, cv2.COLOR_BGR2GRAY)
     current_gray = cv2.cvtColor(current, cv2.COLOR_BGR2GRAY)
     difference = cv2.absdiff(current_gray, previous_gray)
