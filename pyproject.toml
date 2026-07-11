@@ -9,6 +9,7 @@ description = "Find, rank, and export sports highlight candidates from long-form
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "gdown>=6.1,<7",
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.9,<5",
   "PyYAML>=6,<7",
