@@ -9,6 +9,7 @@ __pycache__/
 data/input/*
 data/output/*
 data/reports/*
+data/assets/*
 !data/input/.gitkeep
 !data/output/.gitkeep
 !data/reports/.gitkeep
