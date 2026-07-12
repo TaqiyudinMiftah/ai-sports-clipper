@@ -10,6 +10,7 @@ data/input/*
 data/output/*
 data/reports/*
 data/assets/*
+data/jobs/*
 !data/input/.gitkeep
 !data/output/.gitkeep
 !data/reports/.gitkeep
