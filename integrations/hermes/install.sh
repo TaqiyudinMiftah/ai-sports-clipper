@@ -27,6 +27,7 @@ Hermes clipper integration installed.
 mcp_servers:
   sports_clipper:
     command: "${VENV_DIR}/bin/clipper-mcp"
+    timeout: 330
     env:
       CLIPPER_PROJECT_ROOT: "${PROJECT_ROOT}"
       CLIPPER_JOBS_ROOT: "${PROJECT_ROOT}/data/jobs"
@@ -34,6 +35,7 @@ mcp_servers:
       include:
         - submit_clip_job
         - get_clip_job
+        - wait_for_clip_job
         - list_clip_outputs
         - cancel_clip_job
 
