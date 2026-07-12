@@ -10,6 +10,7 @@ metadata:
     requires_tools:
       - submit_clip_job
       - get_clip_job
+      - wait_for_clip_job
       - list_clip_outputs
       - cancel_clip_job
 ---
@@ -31,11 +32,11 @@ Use this skill when the user asks to create social clips from a local match vide
    - 0.4x slow-motion ending
    - vertical ball-follow framing
    - official PPL watermark
-5. Call `submit_clip_job` and report the returned job ID.
-6. Check progress with `get_clip_job`. Do not repeatedly poll more often than every 30 seconds.
+5. Call `submit_clip_job` and tell the user the returned job ID.
+6. Call `wait_for_clip_job` with a 300-second timeout. Repeat only while the same Telegram turn remains active and the result says `timed_out=true`.
 7. When status is `completed`, call `list_clip_outputs`.
 8. Return each value in `media_tags` exactly so Hermes sends the MP4 files to Telegram.
-9. When status is `failed`, explain the reported error instead of claiming success.
+9. When status is `failed` or `cancelled`, explain the reported status and error instead of claiming success.
 
 ## Restrictions
 
@@ -55,4 +56,5 @@ Action:
 
 - Call `submit_clip_job` with `clip_count=3`, `target_duration=20`, `slowmo_speed=0.4`, and `confirm_rights=true`.
 - Report the job ID and queued status.
-- Later, check status and deliver all returned `MEDIA:` tags.
+- Call `wait_for_clip_job` until completed or until the turn must end.
+- Deliver all returned `MEDIA:` tags after completion.
