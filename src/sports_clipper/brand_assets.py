@@ -11,8 +11,9 @@ from .drive_download import sha256_file
 PPL_LOGO_FOLDER_URL = (
     "https://drive.google.com/drive/folders/1QODBNZy3eoWAEq-rALAMDF-7a9ky8HDu"
 )
+PPL_DEFAULT_LOGO_FILE_ID = "1-7fVkEfTIpjMbUu11e9ACGRZO7KWUPXF"
 PPL_DEFAULT_LOGO_URL = (
-    "https://drive.google.com/file/d/1-7fVkEfTIpjMbUu11e9ACGRZO7KWUPXF/view"
+    f"https://drive.google.com/file/d/{PPL_DEFAULT_LOGO_FILE_ID}/view"
 )
 PPL_DEFAULT_LOGO_FILENAME = "PPL_HORIZONTAL_LOCKUP_WHITE.png"
 PPL_DEFAULT_LOGO_PATH = Path("data/assets/ppl") / PPL_DEFAULT_LOGO_FILENAME
@@ -62,8 +63,7 @@ def download_ppl_logo(
                 sys.executable,
                 "-m",
                 "gdown",
-                PPL_DEFAULT_LOGO_URL,
-                "--fuzzy",
+                PPL_DEFAULT_LOGO_FILE_ID,
                 "-O",
                 str(destination),
                 "--quiet",
@@ -78,6 +78,7 @@ def download_ppl_logo(
     record = {
         "source_folder_url": PPL_LOGO_FOLDER_URL,
         "source_file_url": PPL_DEFAULT_LOGO_URL,
+        "source_file_id": PPL_DEFAULT_LOGO_FILE_ID,
         "filename": PPL_DEFAULT_LOGO_FILENAME,
         "local_path": str(destination),
         "status": status,
