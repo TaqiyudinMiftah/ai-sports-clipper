@@ -13,7 +13,6 @@ python -m pip install -e ".[dev]"
 Verify the new commands:
 
 ```bash
-clipper-mcp --help 2>/dev/null || true
 clipper-worker --help
 ```
 
@@ -36,6 +35,7 @@ Add this block to `~/.hermes/config.yaml`, replacing the home path when needed:
 mcp_servers:
   sports_clipper:
     command: "/home/taqiyudinmiftah/ai-sports-clipper/.venv/bin/clipper-mcp"
+    timeout: 330
     env:
       CLIPPER_PROJECT_ROOT: "/home/taqiyudinmiftah/ai-sports-clipper"
       CLIPPER_JOBS_ROOT: "/home/taqiyudinmiftah/ai-sports-clipper/data/jobs"
@@ -43,9 +43,12 @@ mcp_servers:
       include:
         - submit_clip_job
         - get_clip_job
+        - wait_for_clip_job
         - list_clip_outputs
         - cancel_clip_job
 ```
+
+The longer timeout permits the bounded wait tool to keep a Telegram turn active while the worker renders clips.
 
 ## 4. Install the Hermes skill
 
@@ -85,7 +88,7 @@ This is official PPL footage and I confirm I have permission:
 https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
-Hermes should call `submit_clip_job`, return a job ID, check its status, and finally return `MEDIA:/absolute/path.mp4` tags. The Hermes gateway delivers those paths as Telegram attachments.
+Hermes should call `submit_clip_job`, return a job ID, wait for the worker, and finally return `MEDIA:/absolute/path.mp4` tags. The Hermes gateway delivers those paths as Telegram attachments.
 
 ## Local source example
 
@@ -120,6 +123,6 @@ Running jobs use cooperative cancellation and stop at the next pipeline progress
 
 - Allowlist only your Telegram numeric user ID during Hermes gateway setup.
 - Keep the BotFather token in Hermes configuration; never commit it.
-- The MCP server exposes only four clipping tools and no shell execution.
+- The MCP server exposes only five clipping tools and no shell execution.
 - YouTube jobs require explicit rights confirmation.
 - Run Hermes and the clipper worker under a non-root user.
