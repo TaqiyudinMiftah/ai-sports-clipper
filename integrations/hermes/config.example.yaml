@@ -4,6 +4,7 @@
 mcp_servers:
   sports_clipper:
     command: "/home/USER/ai-sports-clipper/.venv/bin/clipper-mcp"
+    timeout: 330
     env:
       CLIPPER_PROJECT_ROOT: "/home/USER/ai-sports-clipper"
       CLIPPER_JOBS_ROOT: "/home/USER/ai-sports-clipper/data/jobs"
@@ -11,5 +12,6 @@ mcp_servers:
       include:
         - submit_clip_job
         - get_clip_job
+        - wait_for_clip_job
         - list_clip_outputs
         - cancel_clip_job
