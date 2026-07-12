@@ -6,10 +6,11 @@ import tempfile
 from pathlib import Path
 
 from .audio_analysis import analyze_audio_windows, extract_mono_audio
-from .ball_reframe import (
-    ReframeError,
-    parse_normalized_roi,
-    reframe_video,
+from .ball_reframe import ReframeError, parse_normalized_roi, reframe_video
+from .brand_assets import (
+    PPL_DEFAULT_LOGO_PATH,
+    BrandAssetError,
+    download_ppl_logo,
 )
 from .candidate_detection import build_timeline, detect_candidates
 from .clip_exporter import export_clip
@@ -21,6 +22,7 @@ from .drive_download import (
 )
 from .motion_analysis import analyze_motion_windows
 from .scoring import rank_candidates
+from .social_composer import SocialComposeError, compose_social_video
 from .video_info import MediaToolError, get_video_info
 
 
@@ -73,6 +75,12 @@ def download_drive_command(
     return 0
 
 
+def download_logo_command(output: Path, overwrite: bool) -> int:
+    record = download_ppl_logo(output, overwrite=overwrite)
+    print(json.dumps(record, indent=2))
+    return 0
+
+
 def reframe_command(
     video: Path,
     output: Path | None,
@@ -95,6 +103,37 @@ def reframe_command(
         smoothing=smoothing,
         analysis_width=analysis_width,
         debug_overlay=debug_overlay,
+    )
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def compose_social_command(
+    video: Path,
+    output: Path | None,
+    logo: Path,
+    duration: float,
+    slowmo_speed: float,
+    replay_source_seconds: float | None,
+    width: int,
+    height: int,
+    logo_width: int,
+    logo_bottom_margin: int,
+    logo_opacity: float,
+) -> int:
+    destination = output or Path("data/output") / f"{video.stem}_social.mp4"
+    report = compose_social_video(
+        video,
+        destination,
+        logo,
+        target_duration=duration,
+        slowmo_speed=slowmo_speed,
+        replay_source_seconds=replay_source_seconds,
+        output_width=width,
+        output_height=height,
+        logo_width=logo_width,
+        logo_bottom_margin=logo_bottom_margin,
+        logo_opacity=logo_opacity,
     )
     print(json.dumps(report, indent=2))
     return 0
@@ -203,6 +242,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="List matching files and write a manifest without downloading bytes",
     )
 
+    logo_parser = subparsers.add_parser(
+        "download-logo",
+        help="Download the approved white Pro Padel League logo",
+    )
+    logo_parser.add_argument(
+        "--output",
+        type=Path,
+        default=PPL_DEFAULT_LOGO_PATH,
+        help="Destination PNG path",
+    )
+    logo_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing local logo",
+    )
+
     inspect_parser = subparsers.add_parser("inspect", help="Inspect video metadata")
     inspect_parser.add_argument("video", type=Path)
 
@@ -243,6 +298,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Draw tracking mode and crop-center markers on the output",
     )
 
+    compose_parser = subparsers.add_parser(
+        "compose-social",
+        help="Create a vertical social edit with an ending slow-motion replay and logo",
+    )
+    compose_parser.add_argument("video", type=Path)
+    compose_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Output MP4; defaults to data/output/<name>_social.mp4",
+    )
+    compose_parser.add_argument(
+        "--logo",
+        type=Path,
+        default=PPL_DEFAULT_LOGO_PATH,
+        help="Official logo PNG; run download-logo to create the default file",
+    )
+    compose_parser.add_argument("--duration", type=float, default=20.0)
+    compose_parser.add_argument("--slowmo-speed", type=float, default=0.4)
+    compose_parser.add_argument(
+        "--replay-source-seconds",
+        type=float,
+        help="Seconds from the end to replay; default automatically fills the target",
+    )
+    compose_parser.add_argument("--width", type=int, default=1080)
+    compose_parser.add_argument("--height", type=int, default=1920)
+    compose_parser.add_argument("--logo-width", type=int, default=300)
+    compose_parser.add_argument("--logo-bottom-margin", type=int, default=170)
+    compose_parser.add_argument("--logo-opacity", type=float, default=0.94)
+
     analyze_parser = subparsers.add_parser(
         "analyze", help="Find and optionally export highlight candidates"
     )
@@ -272,6 +356,8 @@ def main() -> int:
                 compute_hashes=not args.no_hash,
                 list_only=args.list_only,
             )
+        if args.command == "download-logo":
+            return download_logo_command(args.output, args.overwrite)
         if args.command == "inspect":
             return inspect_command(args.video)
         if args.command == "reframe":
@@ -286,6 +372,20 @@ def main() -> int:
                 analysis_width=args.analysis_width,
                 debug_overlay=args.debug_overlay,
             )
+        if args.command == "compose-social":
+            return compose_social_command(
+                video=args.video,
+                output=args.output,
+                logo=args.logo,
+                duration=args.duration,
+                slowmo_speed=args.slowmo_speed,
+                replay_source_seconds=args.replay_source_seconds,
+                width=args.width,
+                height=args.height,
+                logo_width=args.logo_width,
+                logo_bottom_margin=args.logo_bottom_margin,
+                logo_opacity=args.logo_opacity,
+            )
         return analyze_command(
             video=args.video,
             output_dir=args.output,
@@ -296,8 +396,10 @@ def main() -> int:
             export=not args.no_export,
         )
     except (
+        BrandAssetError,
         DriveDownloadError,
         ReframeError,
+        SocialComposeError,
         FileNotFoundError,
         ValueError,
         RuntimeError,

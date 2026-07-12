@@ -11,12 +11,25 @@ source:
   manifest_file: source_manifest.json
   hash_algorithm: sha256
 
+brand:
+  logo_folder_url: "https://drive.google.com/drive/folders/1QODBNZy3eoWAEq-rALAMDF-7a9ky8HDu"
+  default_logo_file: PPL_HORIZONTAL_LOCKUP_WHITE.png
+  default_logo_path: data/assets/ppl/PPL_HORIZONTAL_LOCKUP_WHITE.png
+
 video:
   minimum_duration_seconds: 10
   target_width: 1080
   target_height: 1920
   preserve_original_audio: true
   watermark_required: true
+
+social_edit:
+  target_duration_seconds: 20
+  slowmo_speed: 0.4
+  ending_replay: true
+  logo_width_pixels: 300
+  logo_bottom_margin_pixels: 170
+  logo_opacity: 0.94
 
 content:
   language: English
