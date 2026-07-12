@@ -100,6 +100,12 @@ def create_job_id(source: str, now: datetime | None = None) -> str:
     return f"{moment.strftime('%Y%m%dT%H%M%SZ')}-{digest}"
 
 
+def validate_job_id(job_id: str) -> str:
+    if not job_id or "/" in job_id or "\\" in job_id or ".." in job_id:
+        raise ValueError("invalid job_id")
+    return job_id
+
+
 def _emit(callback: ProgressCallback | None, state: str, message: str) -> None:
     if callback is not None:
         callback(state, message)
@@ -137,10 +143,11 @@ def process_clip_request(
     request: ClipRequest,
     *,
     progress: ProgressCallback | None = None,
+    job_id: str | None = None,
 ) -> ClipJobResult:
     request.validate()
-    job_id = create_job_id(request.source)
-    job_dir = request.jobs_root.expanduser() / job_id
+    resolved_job_id = validate_job_id(job_id) if job_id is not None else create_job_id(request.source)
+    job_dir = request.jobs_root.expanduser() / resolved_job_id
     source_dir = job_dir / "source"
     candidates_dir = job_dir / "candidates"
     reframed_dir = job_dir / "reframed"
@@ -150,29 +157,54 @@ def process_clip_request(
         directory.mkdir(parents=True, exist_ok=True)
 
     manifest_path = job_dir / "job.json"
+    now = datetime.now(timezone.utc).isoformat()
+    existing: dict[str, object] = {}
+    if manifest_path.is_file():
+        try:
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except (OSError, ValueError):
+            existing = {}
+
     manifest: dict[str, object] = {
-        "job_id": job_id,
+        **existing,
+        "job_id": resolved_job_id,
         "status": "received",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": existing.get("created_at", now),
+        "started_at": now,
+        "updated_at": now,
         "request": request.to_dict(),
         "clips": [],
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    def save_manifest() -> None:
+        manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    def set_status(state: str, message: str) -> None:
+        manifest["status"] = state
+        manifest["progress_message"] = message
+        save_manifest()
+        _emit(progress, state, message)
+
+    save_manifest()
 
     try:
-        _emit(progress, "validating", "Resolving video source")
+        set_status("validating", "Resolving video source")
         source = resolve_source(request.source, confirm_rights=request.confirm_rights)
 
-        _emit(progress, "downloading", "Acquiring source video")
+        set_status("downloading", "Acquiring source video")
         source_path, source_record = source.acquire(source_dir)
         manifest["source"] = source_record
+        save_manifest()
 
         logo_path = request.logo_path.expanduser()
         if not logo_path.is_file():
-            _emit(progress, "assets", "Downloading official PPL logo")
+            set_status("assets", "Downloading official PPL logo")
             download_ppl_logo(logo_path)
 
-        _emit(progress, "analyzing", "Finding highlight candidates")
+        set_status("analyzing", "Finding highlight candidates")
         source_info, candidates = _analyze_video(
             source_path,
             clip_count=request.clip_count,
@@ -184,11 +216,11 @@ def process_clip_request(
                 "No highlight candidates were found. Try a lower --threshold value."
             )
         manifest["source_video"] = source_info.to_dict()
+        save_manifest()
 
         outputs: list[ClipOutput] = []
         for index, candidate in enumerate(candidates, start=1):
-            _emit(
-                progress,
+            set_status(
                 "rendering",
                 f"Rendering clip {index} of {len(candidates)}",
             )
@@ -227,16 +259,16 @@ def process_clip_request(
             )
             outputs.append(output)
             manifest["clips"] = [item.to_dict() for item in outputs]
-            manifest["status"] = "rendering"
-            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            save_manifest()
 
         manifest["status"] = "completed"
+        manifest["progress_message"] = f"Created {len(outputs)} social clips"
         manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
         manifest["clips"] = [item.to_dict() for item in outputs]
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        save_manifest()
         _emit(progress, "completed", f"Created {len(outputs)} social clips")
         return ClipJobResult(
-            job_id=job_id,
+            job_id=resolved_job_id,
             job_dir=str(job_dir),
             source_path=str(source_path),
             clips=outputs,
@@ -244,8 +276,9 @@ def process_clip_request(
         )
     except Exception as error:
         manifest["status"] = "failed"
+        manifest["progress_message"] = str(error)
         manifest["failed_at"] = datetime.now(timezone.utc).isoformat()
         manifest["error"] = str(error)
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        save_manifest()
         _emit(progress, "failed", str(error))
         raise

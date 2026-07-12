@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-sports-clipper"
-version = "0.2.0"
+version = "0.3.0"
 description = "Find, rank, and export sports highlight candidates from long-form video."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,10 +20,16 @@ dependencies = [
 dev = [
   "pytest>=8,<9",
 ]
+hermes = [
+  "mcp>=1.26,<2",
+  "starlette>=1.0.1,<2",
+]
 
 [project.scripts]
 sports-clipper = "sports_clipper.cli:main"
 clipper = "sports_clipper.simple_cli:main"
+clipper-worker = "sports_clipper.job_worker:main"
+clipper-mcp = "sports_clipper.hermes_mcp:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

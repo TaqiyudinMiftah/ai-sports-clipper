@@ -8,7 +8,7 @@ A human should review every result before posting.
 
 - Python 3.10 or newer
 - FFmpeg and FFprobe on `PATH`
-- Enough disk space for the source video and rendered clips
+- Enough disk space for source videos and rendered clips
 
 ```bash
 ffmpeg -version
@@ -27,7 +27,7 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[dev]"
 ```
 
-Verify both command interfaces:
+Verify the command interfaces:
 
 ```bash
 clipper --help
@@ -67,9 +67,202 @@ clipper "SOURCE" \
 - `--sample-fps`: visual-analysis sampling rate
 - `--no-reframe`: skip ball-follow vertical reframing
 - `--jobs-dir`: change the job workspace root
-- `--json`: print a machine-readable result for agent integrations
+- `--json`: print a machine-readable result
 
-## What the command does
+## Hermes Agent and Telegram
+
+Hermes should manage Telegram and natural-language conversation. This repository supplies a restricted MCP tool server and a persistent background worker.
+
+```text
+Telegram
+   ↓
+Hermes Gateway
+   ↓
+AI Sports Clipper MCP tools
+   ↓
+Persistent queue
+   ↓
+clipper-worker
+   ↓
+Final MP4 files
+```
+
+The MCP surface exposes only:
+
+```text
+submit_clip_job
+get_clip_job
+list_clip_outputs
+cancel_clip_job
+```
+
+It does not expose arbitrary shell execution.
+
+### 1. Install Hermes support
+
+From the repository:
+
+```bash
+source .venv/bin/activate
+python -m pip install -e ".[dev,hermes]"
+```
+
+Or run the integration helper:
+
+```bash
+bash integrations/hermes/install.sh
+```
+
+The helper installs the MCP dependency and copies the skill to:
+
+```text
+~/.hermes/skills/media/padel-clipper/SKILL.md
+```
+
+### 2. Configure the MCP server
+
+Merge this block into `~/.hermes/config.yaml`, using your actual absolute path:
+
+```yaml
+mcp_servers:
+  sports_clipper:
+    command: "/home/USER/ai-sports-clipper/.venv/bin/clipper-mcp"
+    env:
+      CLIPPER_PROJECT_ROOT: "/home/USER/ai-sports-clipper"
+      CLIPPER_JOBS_ROOT: "/home/USER/ai-sports-clipper/data/jobs"
+    tools:
+      include:
+        - submit_clip_job
+        - get_clip_job
+        - list_clip_outputs
+        - cancel_clip_job
+```
+
+A template is available at `integrations/hermes/config.example.yaml`.
+
+### 3. Start the background worker
+
+```bash
+clipper-worker
+```
+
+The worker watches `data/jobs/_queue/pending`, processes jobs one at a time, and moves queue tickets into `completed`, `failed`, or `cancelled`.
+
+For a one-job test:
+
+```bash
+clipper-worker --once --json
+```
+
+A systemd template is available at:
+
+```text
+integrations/hermes/clipper-worker.service.example
+```
+
+### 4. Configure Telegram in Hermes
+
+Install Hermes separately, then run:
+
+```bash
+hermes gateway setup
+```
+
+Choose Telegram and provide the BotFather token plus your allowed numeric Telegram user ID.
+
+Start the messaging gateway:
+
+```bash
+hermes gateway
+```
+
+For a local always-on ThinkCentre, Hermes' default Telegram long-polling mode is appropriate.
+
+### 5. Command Hermes from Telegram
+
+Example:
+
+```text
+Create 3 clips from this official PPL match:
+https://www.youtube.com/watch?v=VIDEO_ID
+
+Make them around 20 seconds with slow motion at the end.
+I confirm that I have permission to download and edit this footage.
+```
+
+Hermes calls `submit_clip_job` and returns a job ID immediately while `clipper-worker` performs the long video job.
+
+Check later with:
+
+```text
+What is the status of job 20260712T120000Z-ab12cd34-a1b2c3?
+```
+
+When completed:
+
+```text
+Send me the clips for job 20260712T120000Z-ab12cd34-a1b2c3.
+```
+
+The Hermes skill calls `list_clip_outputs` and returns each absolute MP4 path as a `MEDIA:` attachment for Telegram.
+
+## Persistent queue layout
+
+```text
+data/jobs/
+├── _queue/
+│   ├── pending/
+│   ├── running/
+│   ├── completed/
+│   ├── failed/
+│   └── cancelled/
+└── <job-id>/
+    ├── request.json
+    ├── job.json
+    ├── source/
+    ├── candidates/
+    ├── reframed/
+    ├── final/
+    │   ├── clip_01_social.mp4
+    │   └── clip_02_social.mp4
+    └── reports/
+```
+
+`job.json` records queued and pipeline state, request settings, progress messages, source provenance, candidate timestamps, scores, reasons, errors, and final output paths.
+
+The queue is file-backed so jobs survive restarts without requiring Redis for the single-machine MVP.
+
+## Python agent contracts
+
+Synchronous processing remains available:
+
+```python
+from sports_clipper.agent_tools import create_clip_job
+
+result = create_clip_job(
+    {
+        "source": "data/input/ppl/match.mov",
+        "clip_count": 3,
+    }
+)
+```
+
+Non-blocking Hermes submission uses:
+
+```python
+from sports_clipper.job_queue import enqueue_clip_job
+
+job = enqueue_clip_job(
+    {
+        "source": "https://www.youtube.com/watch?v=VIDEO_ID",
+        "clip_count": 3,
+        "target_duration": 20,
+        "confirm_rights": True,
+    }
+)
+```
+
+## What the pipeline does
 
 ```text
 Resolve local or YouTube source
@@ -93,55 +286,7 @@ Apply the PPL watermark and preserve audio
 Write final MP4 files and a durable job manifest
 ```
 
-## Job output
-
-Every request creates a workspace under:
-
-```text
-data/jobs/<job-id>/
-├── source/
-│   └── source_manifest.json
-├── candidates/
-├── reframed/
-├── final/
-│   ├── clip_01_social.mp4
-│   └── clip_02_social.mp4
-└── job.json
-```
-
-`job.json` records the current state, request settings, source provenance, candidate timestamps, scores, reasons, and final output paths. This file is the durable interface used by future Telegram and WhatsApp workers.
-
-## Agent tool contract
-
-The repository now exposes a stable Python function for chat agents:
-
-```python
-from sports_clipper.agent_tools import create_clip_job
-
-result = create_clip_job(
-    {
-        "source": "https://www.youtube.com/watch?v=VIDEO_ID",
-        "clip_count": 3,
-        "target_duration": 20,
-        "slowmo_speed": 0.4,
-        "confirm_rights": True,
-    }
-)
-```
-
-Read a job later with:
-
-```python
-from sports_clipper.agent_tools import get_clip_job
-
-job = get_clip_job("20260712T103000Z-ab12cd34")
-```
-
-Telegram and WhatsApp adapters should call these functions instead of executing arbitrary shell commands.
-
 ## Advanced commands
-
-The original commands remain available for debugging and manual control.
 
 ### Download approved Drive footage
 
@@ -181,16 +326,18 @@ sports-clipper compose-social \
 - The highlight detector uses audio and motion heuristics rather than exact rally boundaries.
 - The ball follower is a lightweight color-and-motion tracker and can lose the ball.
 - The replay composer assumes the strongest action is near the end of each candidate.
-- Processing is synchronous. A Redis-backed worker queue is the next step before Telegram or WhatsApp deployment.
+- The file-backed worker processes one job at a time on one machine.
+- Running-job cancellation is cooperative and takes effect at the next pipeline checkpoint.
+- Hermes does not proactively push a completion message in this milestone; ask for the job status and completed outputs.
 - Clips are generated for review and are not automatically posted.
 
 ## Next implementation phases
 
-1. Add persistent queued jobs and retry support.
-2. Add a Telegram bot with URL intake, progress messages, previews, and approval buttons.
+1. Add automatic Hermes completion notifications to the originating Telegram conversation.
+2. Add approval and regeneration controls.
 3. Add natural-language edit controls such as “less zoom” and “longer rally.”
-4. Add a WhatsApp Cloud API adapter using the same agent tool contract.
-5. Add exact rally-boundary and final-shot detection.
+4. Add exact rally-boundary and final-shot detection.
+5. Add multi-worker locking or Redis when processing moves beyond one machine.
 
 ## Run tests
 

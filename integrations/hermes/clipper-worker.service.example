@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Sports Clipper background worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER
+WorkingDirectory=/home/USER/ai-sports-clipper
+Environment=CLIPPER_JOBS_ROOT=/home/USER/ai-sports-clipper/data/jobs
+ExecStart=/home/USER/ai-sports-clipper/.venv/bin/clipper-worker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
