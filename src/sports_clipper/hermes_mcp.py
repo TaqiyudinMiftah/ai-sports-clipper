@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
 from .agent_tools import get_clip_job as read_clip_job
 from .brand_assets import PPL_DEFAULT_LOGO_PATH
 from .job_queue import (
+    TERMINAL_STATUSES,
     cancel_clip_job as request_job_cancellation,
     enqueue_clip_job,
     list_clip_outputs as read_clip_outputs,
@@ -83,6 +85,35 @@ def get_clip_job_status(
     }
 
 
+def wait_for_clip_job_status(
+    job_id: str,
+    timeout_seconds: int = 120,
+    poll_seconds: float = 5.0,
+    *,
+    jobs_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Wait until a job finishes or a bounded timeout expires.
+
+    The timeout is capped at five minutes so a Hermes tool call cannot block
+    indefinitely. A timed-out response is not a failure; Hermes can report the
+    job ID and check again in a later turn.
+    """
+    timeout = max(1, min(int(timeout_seconds), 300))
+    interval = max(0.25, min(float(poll_seconds), 30.0))
+    deadline = time.monotonic() + timeout
+    status = get_clip_job_status(job_id, jobs_root=jobs_root)
+
+    while status.get("status") not in TERMINAL_STATUSES:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(interval, remaining))
+        status = get_clip_job_status(job_id, jobs_root=jobs_root)
+
+    status["timed_out"] = status.get("status") not in TERMINAL_STATUSES
+    return status
+
+
 def list_clip_job_outputs(
     job_id: str,
     *,
@@ -145,6 +176,20 @@ def build_server(
     def get_clip_job(job_id: str) -> dict[str, Any]:
         """Check queued clip progress, completion, cancellation, or failure."""
         return get_clip_job_status(job_id, jobs_root=jobs)
+
+    @server.tool()
+    def wait_for_clip_job(
+        job_id: str,
+        timeout_seconds: int = 120,
+        poll_seconds: float = 5.0,
+    ) -> dict[str, Any]:
+        """Wait up to five minutes for a job to reach a terminal state."""
+        return wait_for_clip_job_status(
+            job_id,
+            timeout_seconds,
+            poll_seconds,
+            jobs_root=jobs,
+        )
 
     @server.tool()
     def list_clip_outputs(job_id: str) -> dict[str, Any]:
