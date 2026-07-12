@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,18 @@ def _validate_submission(
             "YouTube sources require confirm_rights=true after the user confirms "
             "the footage is official or otherwise authorized."
         )
+
+
+def _job_summary(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "job_id": record["job_id"],
+        "status": record["status"],
+        "progress": record.get("progress"),
+        "error": record.get("error"),
+        "clip_count": len(record.get("clips", [])),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+    }
 
 
 @mcp.tool()
@@ -76,23 +89,40 @@ def submit_clip_job(
         "job_id": record["job_id"],
         "status": record["status"],
         "progress": record["progress"],
-        "message": "Clip job queued. Use get_clip_job to check progress.",
+        "message": "Clip job queued. Use wait_for_clip_job or get_clip_job to check progress.",
     }
 
 
 @mcp.tool()
 def get_clip_job(job_id: str) -> dict[str, Any]:
     """Return the current status, progress, errors, and clip count for one job."""
+    return _job_summary(get_job(job_id, jobs_root=_jobs_root()))
+
+
+@mcp.tool()
+def wait_for_clip_job(
+    job_id: str,
+    timeout_seconds: int = 120,
+    poll_seconds: float = 5.0,
+) -> dict[str, Any]:
+    """Wait for a job to finish or until a bounded timeout expires.
+
+    Use this after submit_clip_job so one Hermes turn can remain active while the
+    background worker processes the video. The timeout is capped at five minutes.
+    """
+    timeout = max(1, min(int(timeout_seconds), 300))
+    interval = max(1.0, min(float(poll_seconds), 30.0))
+    deadline = time.monotonic() + timeout
     record = get_job(job_id, jobs_root=_jobs_root())
-    return {
-        "job_id": record["job_id"],
-        "status": record["status"],
-        "progress": record.get("progress"),
-        "error": record.get("error"),
-        "clip_count": len(record.get("clips", [])),
-        "created_at": record.get("created_at"),
-        "updated_at": record.get("updated_at"),
-    }
+    while record.get("status") not in {"completed", "failed", "cancelled"}:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(interval, remaining))
+        record = get_job(job_id, jobs_root=_jobs_root())
+    summary = _job_summary(record)
+    summary["timed_out"] = record.get("status") not in {"completed", "failed", "cancelled"}
+    return summary
 
 
 @mcp.tool()
